@@ -5,6 +5,9 @@ on:
     branches: ["main"]
   workflow_dispatch: {}
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -32,8 +35,14 @@ jobs:
         with:
           gradle-version: "8.7"
 
+      - name: Compute version code
+        id: ver
+        run: echo "vc=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_OUTPUT"
+        env:
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+
       - name: Build Debug APK
-        run: gradle :app:assembleDebug --no-daemon --stacktrace
+        run: gradle :app:assembleDebug -PversionCode=${{ steps.ver.outputs.vc }} -PversionName=1.0.${{ steps.ver.outputs.vc }} --no-daemon --stacktrace
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -41,3 +50,12 @@ jobs:
           name: marhaba-grill-tv-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Publish GitHub Release (enables OTA updates)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.vc }}
+          name: Build ${{ steps.ver.outputs.vc }}
+          files: app/build/outputs/apk/debug/app-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
