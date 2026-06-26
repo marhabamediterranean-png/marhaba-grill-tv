@@ -89,7 +89,10 @@ private const val MECCA_HLS_PRIMARY =
 private const val MECCA_HLS_FALLBACK =
     "http://m.live.net.sa:1935/live/quran/playlist.m3u8"
 private const val ADHAN_URL = "https://www.islamcan.com/audio/adhan/azan4.mp3"
-private const val ADHAN_DURATION_MS = 20L * 60L * 1000L
+// The live-stream audio stays off this long at each prayer, then resumes (like the OG app).
+private const val STREAM_MUTE_WINDOW_MS = 15L * 60L * 1000L
+// Safety cap for the on-screen "Adhan" overlay in case audio-end is never reported.
+private const val ADHAN_OVERLAY_CAP_MS = 5L * 60L * 1000L
 private const val UPDATE_CHECK_INTERVAL_MS = 6L * 60L * 60L * 1000L // every 6 hours
 
 // ---- Theme colors -----------------------------------------------------------
@@ -140,7 +143,10 @@ fun MarhabaApp() {
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var now by remember { mutableStateOf(Date()) }
     var isAdhanPlaying by remember { mutableStateOf(false) }
-    var userSoundEnabled by remember { mutableStateOf(false) }
+    // Live-stream audio is ON by default; it is muted only during the prayer window.
+    var userSoundEnabled by remember { mutableStateOf(true) }
+    // Epoch millis until which the stream stays muted after a prayer time.
+    var streamMutedUntil by remember { mutableStateOf(0L) }
 
     // Clock tick (minute resolution displayed).
     LaunchedEffect(Unit) {
@@ -188,15 +194,20 @@ fun MarhabaApp() {
                 Locale.US, "%02d:%02d",
                 cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE)
             )
-            if (ADHAN_PRAYERS.any { data.timings[it] == cur }) isAdhanPlaying = true
+            if (ADHAN_PRAYERS.any { data.timings[it] == cur }) {
+                isAdhanPlaying = true
+                // Mute the live stream now and keep it off for the full window.
+                streamMutedUntil = now.time + STREAM_MUTE_WINDOW_MS
+            }
         }
     }
-    // Safety cap.
+    // Safety cap for the on-screen overlay (audio-end normally clears it sooner).
     LaunchedEffect(isAdhanPlaying) {
-        if (isAdhanPlaying) { kotlinx.coroutines.delay(ADHAN_DURATION_MS); isAdhanPlaying = false }
+        if (isAdhanPlaying) { kotlinx.coroutines.delay(ADHAN_OVERLAY_CAP_MS); isAdhanPlaying = false }
     }
 
-    val isStreamMuted = !userSoundEnabled || isAdhanPlaying
+    // Stream is muted if the user muted it, or we're within the prayer mute window.
+    val isStreamMuted = !userSoundEnabled || now.time < streamMutedUntil
 
     BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black)) {
         // Overscan-safe inset so nothing gets cropped by the TV's edge cropping.
@@ -283,30 +294,32 @@ private fun MainScreen(
 private fun Header(data: PrayerData, now: Date, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        verticalAlignment = Alignment.CenterVertically
     ) {
         val holiday = PrayerRepository.getHolidayMessage(data.hijriMonthNumber, data.hijriDay)
-        if (holiday != null) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Image(
-                    painter = painterResource(R.drawable.ic_lantern),
-                    contentDescription = null,
-                    modifier = Modifier.size(60.dp)
-                )
-                Column {
-                    Text(holiday.en, color = Amber, fontSize = 30.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                    Text(holiday.ar, color = AmberLight, fontSize = 24.sp, maxLines = 1)
+        // Logo (or holiday banner) centered within the left region of the header.
+        Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+            if (holiday != null) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Image(
+                        painter = painterResource(R.drawable.ic_lantern),
+                        contentDescription = null,
+                        modifier = Modifier.size(60.dp)
+                    )
+                    Column {
+                        Text(holiday.en, color = Amber, fontSize = 30.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Text(holiday.ar, color = AmberLight, fontSize = 24.sp, maxLines = 1)
+                    }
                 }
+            } else {
+                Image(
+                    painter = painterResource(R.drawable.marhaba_logo),
+                    contentDescription = "Marhaba Grill",
+                    contentScale = ContentScale.Fit,
+                    alignment = Alignment.Center,
+                    modifier = Modifier.fillMaxHeight().widthIn(max = 380.dp)
+                )
             }
-        } else {
-            Image(
-                painter = painterResource(R.drawable.marhaba_logo),
-                contentDescription = "Marhaba Grill",
-                contentScale = ContentScale.Fit,
-                alignment = Alignment.CenterStart,
-                modifier = Modifier.fillMaxHeight().widthIn(max = 360.dp)
-            )
         }
 
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -408,18 +421,18 @@ private fun PrayerListView(data: PrayerData, now: Date) {
             if (isNext) {
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth().weight(2.4f)
+                        .fillMaxWidth().weight(2.7f)
                         .clip(RoundedCornerShape(20.dp))
                         .background(CardBg)
                         .border(2.dp, Amber.copy(alpha = 0.8f), RoundedCornerShape(20.dp))
-                        .padding(horizontal = 18.dp, vertical = 14.dp),
-                    verticalArrangement = Arrangement.SpaceBetween
+                        .padding(horizontal = 18.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.Center
                 ) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             NumberBadge(p.id, big = true)
-                            Text(p.label, color = Amber, fontSize = 32.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
-                            Text(p.ar, color = Color.White.copy(alpha = 0.5f), fontSize = 20.sp, maxLines = 1)
+                            Text(p.label, color = Amber, fontSize = 28.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                            Text(p.ar, color = Color.White.copy(alpha = 0.5f), fontSize = 18.sp, maxLines = 1)
                         }
                         Box(
                             Modifier.clip(RoundedCornerShape(4.dp))
@@ -427,11 +440,18 @@ private fun PrayerListView(data: PrayerData, now: Date) {
                                 .padding(horizontal = 8.dp, vertical = 2.dp)
                         ) { Text("NEXT", color = Color.White.copy(alpha = 0.6f), fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1) }
                     }
-                    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
-                        Text(time, color = Color.White, fontSize = 46.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Bottom
+                    ) {
                         if (countdown.isNotEmpty()) {
-                            Text("Starts in $countdown", color = Amber, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                            Text("Starts in\n$countdown", color = Amber, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 2)
+                        } else {
+                            Spacer(Modifier.width(1.dp))
                         }
+                        Text(time, color = Color.White, fontSize = 40.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                     }
                 }
             } else {
@@ -569,11 +589,22 @@ private fun WeatherIcon(kind: WeatherKind, isDay: Boolean, modifier: Modifier = 
 @Composable
 private fun SunriseIcon(modifier: Modifier = Modifier) {
     val c = Amber
+    val transition = rememberInfiniteTransition(label = "sunrise")
+    val rise by transition.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1900, easing = LinearEasing), repeatMode = RepeatMode.Reverse),
+        label = "rise"
+    )
     Canvas(modifier = modifier) {
         val w = size.width; val h = size.height
-        drawLine(c, Offset(w * 0.1f, h * 0.8f), Offset(w * 0.9f, h * 0.8f), strokeWidth = w * 0.08f, cap = StrokeCap.Round)
-        drawArc(c, 180f, 180f, false, topLeft = Offset(w * 0.25f, h * 0.35f), size = Size(w * 0.5f, w * 0.5f), style = Stroke(width = w * 0.08f, cap = StrokeCap.Round))
-        drawLine(c, Offset(w * 0.5f, h * 0.1f), Offset(w * 0.5f, h * 0.3f), strokeWidth = w * 0.07f, cap = StrokeCap.Round)
+        val bob = h * 0.06f * rise // the sun bobs upward as it "rises"
+        // horizon
+        drawLine(c, Offset(w * 0.05f, h * 0.82f), Offset(w * 0.95f, h * 0.82f), strokeWidth = w * 0.08f, cap = StrokeCap.Round)
+        // half-dome sun, rising
+        drawArc(c, 180f, 180f, false, topLeft = Offset(w * 0.25f, h * 0.42f - bob), size = Size(w * 0.5f, w * 0.5f), style = Stroke(width = w * 0.08f, cap = StrokeCap.Round))
+        // up-ray that pulses in length with the rise
+        val top = h * 0.42f - bob
+        drawLine(c, Offset(w * 0.5f, top - h * 0.04f), Offset(w * 0.5f, top - h * (0.06f + 0.12f * rise)), strokeWidth = w * 0.07f, cap = StrokeCap.Round)
     }
 }
 
