@@ -388,7 +388,7 @@ private fun GlassPane(weather: WeatherData?, sunrise: String?, modifier: Modifie
             horizontalAlignment = Alignment.End
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                SunriseIcon(Modifier.size(18.dp))
+                SunriseIcon(Modifier.size(26.dp))
                 Text("Sunrise", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                 Text("الشروق", color = Color.White.copy(alpha = 0.4f), fontSize = 12.sp, maxLines = 1)
             }
@@ -592,19 +592,36 @@ private fun SunriseIcon(modifier: Modifier = Modifier) {
     val transition = rememberInfiniteTransition(label = "sunrise")
     val rise by transition.animateFloat(
         initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1900, easing = LinearEasing), repeatMode = RepeatMode.Reverse),
+        animationSpec = infiniteRepeatable(tween(2200, easing = LinearEasing), repeatMode = RepeatMode.Reverse),
         label = "rise"
     )
     Canvas(modifier = modifier) {
         val w = size.width; val h = size.height
-        val bob = h * 0.06f * rise // the sun bobs upward as it "rises"
-        // horizon
-        drawLine(c, Offset(w * 0.05f, h * 0.82f), Offset(w * 0.95f, h * 0.82f), strokeWidth = w * 0.08f, cap = StrokeCap.Round)
-        // half-dome sun, rising
-        drawArc(c, 180f, 180f, false, topLeft = Offset(w * 0.25f, h * 0.42f - bob), size = Size(w * 0.5f, w * 0.5f), style = Stroke(width = w * 0.08f, cap = StrokeCap.Round))
-        // up-ray that pulses in length with the rise
-        val top = h * 0.42f - bob
-        drawLine(c, Offset(w * 0.5f, top - h * 0.04f), Offset(w * 0.5f, top - h * (0.06f + 0.12f * rise)), strokeWidth = w * 0.07f, cap = StrokeCap.Round)
+        val horizonY = h * 0.80f
+        val cx = w * 0.5f
+        val r = w * 0.17f
+        // Sun center travels from below the horizon (rise=0) to well above it (rise=1).
+        val cy = horizonY + r * 0.7f - rise * (r * 1.5f)
+        val rayLen = r * (0.5f + 0.6f * rise)
+        val rayGap = r * 0.35f
+        // Clip to above the horizon so the disc appears to emerge from the line.
+        clipRect(left = 0f, top = 0f, right = w, bottom = horizonY) {
+            // fan of rays across the upper hemisphere, lengthening as it rises
+            for (a in intArrayOf(205, 235, 270, 305, 335)) {
+                val rad = Math.toRadians(a.toDouble())
+                val dx = kotlin.math.cos(rad).toFloat()
+                val dy = kotlin.math.sin(rad).toFloat()
+                drawLine(
+                    c,
+                    Offset(cx + dx * (r + rayGap), cy + dy * (r + rayGap)),
+                    Offset(cx + dx * (r + rayGap + rayLen), cy + dy * (r + rayGap + rayLen)),
+                    strokeWidth = w * 0.055f, cap = StrokeCap.Round
+                )
+            }
+            drawCircle(c, r, Offset(cx, cy))
+        }
+        // Horizon line drawn on top, full width.
+        drawLine(c, Offset(w * 0.05f, horizonY), Offset(w * 0.95f, horizonY), strokeWidth = w * 0.09f, cap = StrokeCap.Round)
     }
 }
 
