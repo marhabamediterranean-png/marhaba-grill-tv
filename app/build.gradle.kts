@@ -11,8 +11,11 @@ android {
         applicationId = "com.mpls.salattv"
         minSdk = 24
         targetSdk = 34
-        versionCode = 26
-        versionName = "1.0-native"
+        // versionCode is supplied by CI (-PversionCode=<n>) so each GitHub build
+        // gets a higher number, which drives over-the-air updates. Falls back to
+        // 1000 for local builds.
+        versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 1000
+        versionName = (project.findProperty("versionName") as String?) ?: "1.0"
     }
 
     buildTypes {
@@ -38,6 +41,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.14"
