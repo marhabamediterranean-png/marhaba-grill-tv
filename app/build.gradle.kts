@@ -18,17 +18,28 @@ android {
         versionName = (project.findProperty("versionName") as String?) ?: "1.0"
     }
 
+    signingConfigs {
+        // Fixed signing key committed to the repo so EVERY CI build is signed
+        // identically. Without this, each ephemeral GitHub runner generated a new
+        // debug key, causing "App not installed (conflicts with existing package)"
+        // on update. With a stable key, OTA updates install over each other.
+        create("shared") {
+            storeFile = file("marhaba.keystore")
+            storePassword = "marhaba2026"
+            keyAlias = "marhaba"
+            keyPassword = "marhaba2026"
+        }
+    }
+
     buildTypes {
-        // Debug build is auto-signed with the Android debug key, so the APK
-        // installs on any device/TV with zero signing setup. Kept un-minified
-        // to maximize stability (no obfuscation surprises).
         getByName("debug") {
             isMinifyEnabled = false
             isDebuggable = true
+            signingConfig = signingConfigs.getByName("shared")
         }
         getByName("release") {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("shared")
         }
     }
 
