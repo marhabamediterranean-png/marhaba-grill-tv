@@ -89,9 +89,29 @@ private const val MECCA_HLS_PRIMARY =
     "https://cdn-globecast.akamaized.net/live/eds/saudi_quran/hls_roku/index.m3u8"
 private const val MECCA_HLS_FALLBACK =
     "http://m.live.net.sa:1935/live/quran/playlist.m3u8"
-// Continuous Quran recitation (Abdul Rahman Al-Sudais) — the 24/7 ambient audio.
-// The Makkah video itself is always muted; this is what you hear.
-private const val QURAN_AUDIO_URL = "https://Qurango.net/radio/abdurrahman_alsudais"
+// The 24/7 Quran audio = the uploaded MP3s, hosted on a GitHub Release and streamed
+// IN ORDER (no shuffle), looping. The Makkah video itself is always muted.
+private const val QURAN_BASE =
+    "https://github.com/marhabamediterranean-png/marhaba-grill-tv/releases/download/quran-audio/"
+
+private data class Surah(val file: String, val name: String)
+
+// The exact 38 files you provided, in order, with surah names for the now-playing bar.
+private val QURAN_TRACKS = listOf(
+    Surah("001.mp3", "Al-Fatihah"), Surah("002.mp3", "Al-Baqarah"), Surah("003.mp3", "Aal-E-Imran"),
+    Surah("004.mp3", "An-Nisa"), Surah("005.mp3", "Al-Ma'idah"), Surah("006.mp3", "Al-An'am"),
+    Surah("012.mp3", "Yusuf"), Surah("014.mp3", "Ibrahim"), Surah("017.mp3", "Al-Isra"),
+    Surah("018.mp3", "Al-Kahf"), Surah("019.mp3", "Maryam"), Surah("020.mp3", "Ta-Ha"),
+    Surah("023.mp3", "Al-Mu'minun"), Surah("025.mp3", "Al-Furqan"), Surah("030.mp3", "Ar-Rum"),
+    Surah("032.mp3", "As-Sajdah"), Surah("033.mp3", "Al-Ahzab"), Surah("035.mp3", "Fatir"),
+    Surah("036.mp3", "Ya-Sin"), Surah("039.mp3", "Az-Zumar"), Surah("049.mp3", "Al-Hujurat"),
+    Surah("050.mp3", "Qaf"), Surah("055.mp3", "Ar-Rahman"), Surah("059.mp3", "Al-Hashr"),
+    Surah("066.mp3", "At-Tahrim"), Surah("069.mp3", "Al-Haqqah"), Surah("073.mp3", "Al-Muzzammil"),
+    Surah("085.mp3", "Al-Buruj"), Surah("086.mp3", "At-Tariq"), Surah("087.mp3", "Al-A'la"),
+    Surah("089.mp3", "Al-Fajr"), Surah("090.mp3", "Al-Balad"), Surah("091.mp3", "Ash-Shams"),
+    Surah("092.mp3", "Al-Layl"), Surah("093.mp3", "Ad-Duha"), Surah("097.mp3", "Al-Qadr"),
+    Surah("099.mp3", "Az-Zalzalah"), Surah("108.mp3", "Al-Kawthar")
+)
 // At each prayer time, ALL audio is muted for this long (adhan + prayer), then Quran resumes.
 private const val PRAYER_MUTE_WINDOW_MS = 15L * 60L * 1000L
 private const val UPDATE_CHECK_INTERVAL_MS = 6L * 60L * 60L * 1000L // every 6 hours
@@ -588,27 +608,34 @@ private fun SunriseIcon(modifier: Modifier = Modifier) {
         animationSpec = infiniteRepeatable(tween(2200, easing = LinearEasing), repeatMode = RepeatMode.Reverse),
         label = "rise"
     )
+    // Rays continuously sweep around the dome; the sun itself gently rises.
+    val sweep by transition.animateFloat(
+        initialValue = 0f, targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(6000, easing = LinearEasing)),
+        label = "sweep"
+    )
     Canvas(modifier = modifier) {
         val w = size.width; val h = size.height
-        val horizonY = h * 0.80f
+        val horizonY = h * 0.78f
         val cx = w * 0.5f
-        val r = w * 0.17f
-        // Sun center travels from below the horizon (rise=0) to well above it (rise=1).
-        val cy = horizonY + r * 0.7f - rise * (r * 1.5f)
-        val rayLen = r * (0.5f + 0.6f * rise)
-        val rayGap = r * 0.35f
-        // Clip to above the horizon so the disc appears to emerge from the line.
+        val r = w * 0.16f
+        // Sun sits at the horizon and rises a little (clipped, so it's a dome).
+        val cy = horizonY - r * 0.30f - rise * (r * 0.5f)
+        val rayGap = r * 0.32f
+        val rayLen = r * 0.55f
         clipRect(left = 0f, top = 0f, right = w, bottom = horizonY) {
-            // fan of rays across the upper hemisphere, lengthening as it rises
-            for (a in intArrayOf(205, 235, 270, 305, 335)) {
-                val rad = Math.toRadians(a.toDouble())
+            // 8 rays rotating around the sun; those below the horizon are clipped away,
+            // so they appear to travel around the visible half-circle (dome).
+            val n = 8
+            for (i in 0 until n) {
+                val rad = Math.toRadians((sweep + i * (360.0 / n)))
                 val dx = kotlin.math.cos(rad).toFloat()
                 val dy = kotlin.math.sin(rad).toFloat()
                 drawLine(
                     c,
                     Offset(cx + dx * (r + rayGap), cy + dy * (r + rayGap)),
                     Offset(cx + dx * (r + rayGap + rayLen), cy + dy * (r + rayGap + rayLen)),
-                    strokeWidth = w * 0.055f, cap = StrokeCap.Round
+                    strokeWidth = w * 0.05f, cap = StrokeCap.Round
                 )
             }
             drawCircle(c, r, Offset(cx, cy))
@@ -650,7 +677,7 @@ private fun StreamView(
             }
     }
 
-    // 24/7 Quran recitation (Sudais). Muted during the prayer window or if user mutes.
+    // 24/7 Quran — the uploaded surahs, IN ORDER, looping. Muted during prayer or if user mutes.
     val quranPlayer = remember {
         val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent("MarhabaTV/1.0")
@@ -659,11 +686,15 @@ private fun StreamView(
             .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
             .build().apply {
                 repeatMode = Player.REPEAT_MODE_ALL
+                shuffleModeEnabled = false
+                QURAN_TRACKS.forEach { addMediaItem(MediaItem.fromUri(QURAN_BASE + it.file)) }
                 playWhenReady = true
-                setMediaItem(MediaItem.fromUri(QURAN_AUDIO_URL))
                 prepare()
             }
     }
+
+    // Current surah name shown in the now-playing bar.
+    var currentSurah by remember { mutableStateOf(QURAN_TRACKS.firstOrNull()?.name ?: "") }
 
     // Self-healing reconnect for both streams.
     DisposableEffect(livePlayer, quranPlayer) {
@@ -683,11 +714,15 @@ private fun StreamView(
             override fun onPlayerError(error: PlaybackException) {
                 handler.postDelayed({
                     try {
-                        quranPlayer.stop(); quranPlayer.clearMediaItems()
-                        quranPlayer.setMediaItem(MediaItem.fromUri(QURAN_AUDIO_URL))
+                        // Skip the failed surah and keep the playlist going.
+                        if (quranPlayer.hasNextMediaItem()) quranPlayer.seekToNextMediaItem()
+                        else quranPlayer.seekTo(0, 0L)
                         quranPlayer.prepare(); quranPlayer.playWhenReady = true
                     } catch (_: Exception) {}
-                }, 4000)
+                }, 3000)
+            }
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                currentSurah = QURAN_TRACKS.getOrNull(quranPlayer.currentMediaItemIndex)?.name ?: currentSurah
             }
         }
         livePlayer.addListener(liveListener)
@@ -742,39 +777,73 @@ private fun StreamView(
         ) { Text("LIVE", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1) }
 
         Row(
-            Modifier.align(Alignment.BottomStart).padding(16.dp),
+            Modifier.align(Alignment.TopStart).padding(start = 62.dp, top = 16.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF22C55E)))
-            Text("MAKKAH LIVE", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text("MAKKAH", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
         }
 
-        // Mute toggle (controls the Quran audio).
-        Box(
-            Modifier.align(Alignment.TopEnd).padding(16.dp).size(44.dp)
-                .clip(CircleShape).background(Color.Black.copy(alpha = 0.5f))
-                .border(1.dp, Color.White.copy(alpha = 0.1f), CircleShape)
-                .clickable { onToggleMute() },
-            contentAlignment = Alignment.Center
-        ) { SpeakerIcon(muted = isQuranMuted) }
-
-        // Clear on-screen statement that audio is muted during prayer/adhan.
-        if (isPrayerMute) {
+        // Bottom bar: now-playing player, doubling as the prayer/adhan mute status.
+        Row(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                .background(Color.Black.copy(alpha = 0.62f))
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
             Row(
-                Modifier.align(Alignment.Center)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color.Black.copy(alpha = 0.72f))
-                    .border(1.dp, Amber.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
-                    .padding(horizontal = 22.dp, vertical = 14.dp),
+                modifier = Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                SpeakerIcon(muted = true)
-                Column {
-                    Text("Sound Muted", color = Amber, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                    Text("Prayer / Adhan time", color = Color.White.copy(alpha = 0.75f), fontSize = 14.sp, maxLines = 1)
+                when {
+                    isPrayerMute -> {
+                        SpeakerIcon(muted = true)
+                        Column {
+                            Text("Sound Muted", color = Amber, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            Text("Prayer / Adhan time", color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp, maxLines = 1)
+                        }
+                    }
+                    isQuranMuted -> {
+                        SpeakerIcon(muted = true)
+                        Text("Quran audio muted", color = Color.White.copy(alpha = 0.8f), fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    }
+                    else -> {
+                        EqualizerIcon()
+                        Column {
+                            Text("Now Playing · Holy Qur'an", color = Amber, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            Text("Surah $currentSurah", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        }
+                    }
                 }
             }
+            // Mute toggle (controls the Quran audio).
+            Box(
+                Modifier.size(40.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.08f))
+                    .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
+                    .clickable { onToggleMute() },
+                contentAlignment = Alignment.Center
+            ) { SpeakerIcon(muted = isQuranMuted) }
+        }
+    }
+}
+
+// Small animated equalizer to indicate audio is playing.
+@Composable
+private fun EqualizerIcon(modifier: Modifier = Modifier) {
+    val tr = rememberInfiniteTransition(label = "eq")
+    val a by tr.animateFloat(0.3f, 1f, infiniteRepeatable(tween(500, easing = LinearEasing), RepeatMode.Reverse), label = "a")
+    val b by tr.animateFloat(1f, 0.4f, infiniteRepeatable(tween(650, easing = LinearEasing), RepeatMode.Reverse), label = "b")
+    val c by tr.animateFloat(0.5f, 1f, infiniteRepeatable(tween(800, easing = LinearEasing), RepeatMode.Reverse), label = "c")
+    Canvas(modifier = modifier.size(22.dp)) {
+        val w = size.width; val h = size.height
+        val bw = w * 0.22f
+        val heights = listOf(a, b, c)
+        heights.forEachIndexed { i, frac ->
+            val x = w * (0.12f + i * 0.32f)
+            val barH = h * frac
+            drawRect(Amber, topLeft = Offset(x, h - barH), size = Size(bw, barH))
         }
     }
 }
