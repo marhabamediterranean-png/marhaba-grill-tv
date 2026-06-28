@@ -366,7 +366,7 @@ private fun GlassPane(weather: WeatherData?, sunrise: String?, modifier: Modifie
     // Slow diagonal glint that drifts across the pane like light on glass.
     val shimmer by tr.animateFloat(
         initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(5200, easing = LinearEasing), repeatMode = RepeatMode.Restart),
+        animationSpec = infiniteRepeatable(tween(16000, easing = LinearEasing), repeatMode = RepeatMode.Restart),
         label = "shimmer"
     )
     Box(
@@ -435,7 +435,7 @@ private fun GlassPane(weather: WeatherData?, sunrise: String?, modifier: Modifie
             val x = -bandW + shimmer * (w + 2f * bandW)
             drawRect(
                 brush = Brush.linearGradient(
-                    colors = listOf(Color.Transparent, Color.White.copy(alpha = 0.16f), Color.Transparent),
+                    colors = listOf(Color.Transparent, Color.White.copy(alpha = 0.09f), Color.Transparent),
                     start = Offset(x, 0f),
                     end = Offset(x + bandW, h)
                 ),
@@ -548,18 +548,18 @@ private fun NumberBadge(n: Int, big: Boolean) {
 @Composable
 private fun WeatherIcon(kind: WeatherKind, isDay: Boolean, modifier: Modifier = Modifier) {
     val transition = rememberInfiniteTransition(label = "weather")
-    // Subtle, slow motion.
+    // Very subtle, slow motion.
     val rot by transition.animateFloat(
         initialValue = 0f, targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(26000, easing = LinearEasing)), label = "rot"
+        animationSpec = infiniteRepeatable(tween(44000, easing = LinearEasing)), label = "rot"
     )
     val fall by transition.animateFloat(
         initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2000, easing = LinearEasing)), label = "fall"
+        animationSpec = infiniteRepeatable(tween(3800, easing = LinearEasing)), label = "fall"
     )
     val flash by transition.animateFloat(
         initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2600, easing = LinearEasing), repeatMode = RepeatMode.Reverse), label = "flash"
+        animationSpec = infiniteRepeatable(tween(4400, easing = LinearEasing), repeatMode = RepeatMode.Reverse), label = "flash"
     )
 
     val sun = Color(0xFFFBBF24)
@@ -825,7 +825,7 @@ private fun StreamView(
         val barTr = rememberInfiniteTransition(label = "barglass")
         val barShimmer by barTr.animateFloat(
             initialValue = 0f, targetValue = 1f,
-            animationSpec = infiniteRepeatable(tween(5600, easing = LinearEasing), repeatMode = RepeatMode.Restart),
+            animationSpec = infiniteRepeatable(tween(17000, easing = LinearEasing), repeatMode = RepeatMode.Restart),
             label = "barShimmer"
         )
         Box(
@@ -851,7 +851,7 @@ private fun StreamView(
                 val x = -bandW + barShimmer * (w + 2f * bandW)
                 drawRect(
                     brush = Brush.linearGradient(
-                        colors = listOf(Color.Transparent, Color.White.copy(alpha = 0.10f), Color.Transparent),
+                        colors = listOf(Color.Transparent, Color.White.copy(alpha = 0.06f), Color.Transparent),
                         start = Offset(x, 0f),
                         end = Offset(x + bandW, h)
                     ),
