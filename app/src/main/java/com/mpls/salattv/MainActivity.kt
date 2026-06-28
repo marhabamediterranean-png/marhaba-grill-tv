@@ -4,6 +4,7 @@ import android.graphics.Color as AndroidColor
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -699,22 +700,27 @@ private fun StreamView(
     val handler = remember { Handler(Looper.getMainLooper()) }
 
     // Makkah video — ALWAYS silent. Audio comes from the Quran track below.
+    // stall-watchdog bookkeeping
+    val lastPos = remember { longArrayOf(0L) }
+    val lastProgressTs = remember { longArrayOf(0L) }
+    val liveFailCount = remember { intArrayOf(0) }
+
     val livePlayer = remember {
         val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent("MarhabaTV/1.0")
             .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(15000)
+            .setReadTimeoutMs(15000)
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
             .build().apply {
                 repeatMode = Player.REPEAT_MODE_ALL
                 volume = 0f // video is permanently muted
-                // Prefer HD (>=720p) while keeping adaptive switching; falls back
-                // gracefully if the feed only offers lower resolutions.
-                trackSelectionParameters = trackSelectionParameters.buildUpon()
-                    .setMinVideoSize(1280, 720)
-                    .build()
+                // Full adaptive bitrate: picks the highest quality the feed offers
+                // AND the connection can sustain (1080p/720p when possible), and
+                // drops down instead of freezing when bandwidth dips.
                 playWhenReady = true
-                setMediaItem(MediaItem.fromUri(urls[0]))
+                setMediaItem(liveMediaItem(urls[0]))
                 prepare()
             }
     }
@@ -738,18 +744,49 @@ private fun StreamView(
 
     // Self-healing reconnect for both streams.
     DisposableEffect(livePlayer, quranPlayer) {
+        // Reload the live stream at the live edge, alternating source after repeated trouble.
+        fun recoverLive(switchUrl: Boolean) {
+            try {
+                if (switchUrl) urlIndex[0] = (urlIndex[0] + 1) % urls.size
+                livePlayer.stop(); livePlayer.clearMediaItems()
+                livePlayer.setMediaItem(liveMediaItem(urls[urlIndex[0]]))
+                livePlayer.prepare()
+                livePlayer.seekToDefaultPosition() // jump to the live edge
+                livePlayer.playWhenReady = true
+                lastPos[0] = 0L
+                lastProgressTs[0] = SystemClock.elapsedRealtime()
+            } catch (_: Exception) {}
+        }
+
         val liveListener = object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
-                handler.postDelayed({
-                    try {
-                        urlIndex[0] = (urlIndex[0] + 1) % urls.size
-                        livePlayer.stop(); livePlayer.clearMediaItems()
-                        livePlayer.setMediaItem(MediaItem.fromUri(urls[urlIndex[0]]))
-                        livePlayer.prepare(); livePlayer.playWhenReady = true
-                    } catch (_: Exception) {}
-                }, 4000)
+                handler.postDelayed({ recoverLive(switchUrl = true) }, 3000)
             }
         }
+
+        // Watchdog: if the picture stops advancing or the player goes idle/stuck
+        // buffering, re-sync to the live edge (even when no error is thrown).
+        val watchdog = object : Runnable {
+            override fun run() {
+                try {
+                    if (livePlayer.playWhenReady) {
+                        val state = livePlayer.playbackState
+                        val pos = livePlayer.currentPosition
+                        val nowT = SystemClock.elapsedRealtime()
+                        if (lastProgressTs[0] == 0L) lastProgressTs[0] = nowT
+                        if (state == Player.STATE_READY && pos > lastPos[0] + 250L) {
+                            lastPos[0] = pos; lastProgressTs[0] = nowT; liveFailCount[0] = 0
+                        } else if (state == Player.STATE_IDLE || (nowT - lastProgressTs[0]) > 12000L) {
+                            liveFailCount[0]++
+                            recoverLive(switchUrl = liveFailCount[0] >= 2)
+                            if (liveFailCount[0] >= 2) liveFailCount[0] = 0
+                        }
+                    }
+                } catch (_: Exception) {}
+                handler.postDelayed(this, 4000)
+            }
+        }
+        handler.postDelayed(watchdog, 6000)
         val quranListener = object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
                 handler.postDelayed({
@@ -765,6 +802,7 @@ private fun StreamView(
         livePlayer.addListener(liveListener)
         quranPlayer.addListener(quranListener)
         onDispose {
+            handler.removeCallbacks(watchdog)
             livePlayer.removeListener(liveListener)
             quranPlayer.removeListener(quranListener)
             livePlayer.release()
@@ -1004,6 +1042,17 @@ private fun millisUntilAfterMidnight(): Long {
     }
     return (next.timeInMillis - now.timeInMillis).coerceAtLeast(60_000L)
 }
+
+// Live HLS media item with a target live-edge offset so the player can re-sync to "now".
+private fun liveMediaItem(url: String): MediaItem =
+    MediaItem.Builder()
+        .setUri(url)
+        .setLiveConfiguration(
+            MediaItem.LiveConfiguration.Builder()
+                .setTargetOffsetMs(12000)
+                .build()
+        )
+        .build()
 
 private fun fmt(date: Date, pattern: String): String = SimpleDateFormat(pattern, Locale.US).format(date)
 private fun fmtLocale(date: Date, pattern: String, locale: Locale): String = SimpleDateFormat(pattern, locale).format(date)
