@@ -52,7 +52,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.layout.ContentScale
@@ -93,6 +92,8 @@ private const val MECCA_HLS_FALLBACK =
 // IN ORDER (no shuffle), looping. The Makkah video itself is always muted.
 private const val QURAN_BASE =
     "https://github.com/marhabamediterranean-png/marhaba-grill-tv/releases/download/quran-audio/"
+// Reciter name shown in the now-playing bar.
+private const val QURAN_RECITER = "Sheikh Sayed Saeed"
 
 private data class Surah(val file: String, val name: String)
 
@@ -361,51 +362,86 @@ private fun Header(data: PrayerData, now: Date, modifier: Modifier = Modifier) {
 
 @Composable
 private fun GlassPane(weather: WeatherData?, sunrise: String?, modifier: Modifier = Modifier) {
-    Row(
+    val tr = rememberInfiniteTransition(label = "glass")
+    // Slow diagonal glint that drifts across the pane like light on glass.
+    val shimmer by tr.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(5200, easing = LinearEasing), repeatMode = RepeatMode.Restart),
+        label = "shimmer"
+    )
+    Box(
         modifier = modifier
             .clip(RoundedCornerShape(22.dp))
             .background(
                 Brush.verticalGradient(
-                    listOf(Color.White.copy(alpha = 0.12f), Color.White.copy(alpha = 0.04f))
+                    listOf(Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0.05f))
                 )
             )
-            .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(22.dp))
-            .padding(horizontal = 18.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .border(1.dp, Color.White.copy(alpha = 0.24f), RoundedCornerShape(22.dp))
     ) {
-        // Weather block
         Row(
-            modifier = Modifier.weight(1f),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            WeatherIcon(kind = weather?.kind ?: WeatherKind.CLOUD, isDay = weather?.isDay ?: true, modifier = Modifier.size(54.dp))
-            Column {
-                Text(
-                    weather?.let { "${it.tempF}°F" } ?: "--°",
-                    color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false
-                )
-                Text(
-                    weather?.condition ?: "Weather",
-                    color = Amber, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false
-                )
-                Text("Minneapolis", color = Color.White.copy(alpha = 0.45f), fontSize = 11.sp, maxLines = 1)
+            // Weather block
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                WeatherIcon(kind = weather?.kind ?: WeatherKind.CLOUD, isDay = weather?.isDay ?: true, modifier = Modifier.size(54.dp))
+                Column {
+                    Text(
+                        weather?.let { "${it.tempF}°F" } ?: "--°",
+                        color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false
+                    )
+                    Text(
+                        weather?.condition ?: "Weather",
+                        color = Amber, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false
+                    )
+                    Text("Minneapolis", color = Color.White.copy(alpha = 0.45f), fontSize = 11.sp, maxLines = 1)
+                }
+            }
+
+            Box(Modifier.width(1.dp).fillMaxHeight().padding(vertical = 6.dp).background(Color.White.copy(alpha = 0.12f)))
+
+            // Sunrise block
+            Column(
+                modifier = Modifier.padding(start = 16.dp),
+                horizontalAlignment = Alignment.End
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SunriseIcon(Modifier.size(26.dp))
+                    Text("Sunrise", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    Text("الشروق", color = Color.White.copy(alpha = 0.4f), fontSize = 12.sp, maxLines = 1)
+                }
+                Text(to12Hour(sunrise), color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
             }
         }
 
-        Box(Modifier.width(1.dp).fillMaxHeight().padding(vertical = 6.dp).background(Color.White.copy(alpha = 0.12f)))
-
-        // Sunrise block
-        Column(
-            modifier = Modifier.padding(start = 16.dp),
-            horizontalAlignment = Alignment.End
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                SunriseIcon(Modifier.size(26.dp))
-                Text("Sunrise", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                Text("الشروق", color = Color.White.copy(alpha = 0.4f), fontSize = 12.sp, maxLines = 1)
-            }
-            Text(to12Hour(sunrise), color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+        // Glass overlays (drawn on top, non-interactive): a static top sheen + a slow moving glint.
+        Canvas(Modifier.matchParentSize()) {
+            val w = size.width; val h = size.height
+            // top sheen
+            drawRect(
+                Brush.verticalGradient(
+                    0f to Color.White.copy(alpha = 0.12f),
+                    0.45f to Color.Transparent,
+                    1f to Color.Transparent
+                )
+            )
+            // moving diagonal glisten
+            val bandW = w * 0.20f
+            val x = -bandW + shimmer * (w + 2f * bandW)
+            drawRect(
+                brush = Brush.linearGradient(
+                    colors = listOf(Color.Transparent, Color.White.copy(alpha = 0.16f), Color.Transparent),
+                    start = Offset(x, 0f),
+                    end = Offset(x + bandW, h)
+                ),
+                topLeft = Offset(x - bandW, 0f),
+                size = Size(bandW * 3f, h)
+            )
         }
     }
 }
@@ -512,17 +548,18 @@ private fun NumberBadge(n: Int, big: Boolean) {
 @Composable
 private fun WeatherIcon(kind: WeatherKind, isDay: Boolean, modifier: Modifier = Modifier) {
     val transition = rememberInfiniteTransition(label = "weather")
+    // Subtle, slow motion.
     val rot by transition.animateFloat(
         initialValue = 0f, targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(9000, easing = LinearEasing)), label = "rot"
+        animationSpec = infiniteRepeatable(tween(26000, easing = LinearEasing)), label = "rot"
     )
     val fall by transition.animateFloat(
         initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1100, easing = LinearEasing)), label = "fall"
+        animationSpec = infiniteRepeatable(tween(2000, easing = LinearEasing)), label = "fall"
     )
     val flash by transition.animateFloat(
         initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1400, easing = LinearEasing), repeatMode = RepeatMode.Reverse), label = "flash"
+        animationSpec = infiniteRepeatable(tween(2600, easing = LinearEasing), repeatMode = RepeatMode.Reverse), label = "flash"
     )
 
     val sun = Color(0xFFFBBF24)
@@ -605,13 +642,13 @@ private fun SunriseIcon(modifier: Modifier = Modifier) {
     val transition = rememberInfiniteTransition(label = "sunrise")
     val rise by transition.animateFloat(
         initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2200, easing = LinearEasing), repeatMode = RepeatMode.Reverse),
+        animationSpec = infiniteRepeatable(tween(4800, easing = LinearEasing), repeatMode = RepeatMode.Reverse),
         label = "rise"
     )
-    // Rays continuously sweep around the dome; the sun itself gently rises.
+    // Rays slowly drift around the dome; the sun itself gently rises (both subtle).
     val sweep by transition.animateFloat(
         initialValue = 0f, targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(6000, easing = LinearEasing)),
+        animationSpec = infiniteRepeatable(tween(20000, easing = LinearEasing)),
         label = "sweep"
     )
     Canvas(modifier = modifier) {
@@ -620,7 +657,7 @@ private fun SunriseIcon(modifier: Modifier = Modifier) {
         val cx = w * 0.5f
         val r = w * 0.16f
         // Sun sits at the horizon and rises a little (clipped, so it's a dome).
-        val cy = horizonY - r * 0.30f - rise * (r * 0.5f)
+        val cy = horizonY - r * 0.30f - rise * (r * 0.26f)
         val rayGap = r * 0.32f
         val rayLen = r * 0.55f
         clipRect(left = 0f, top = 0f, right = w, bottom = horizonY) {
@@ -671,6 +708,11 @@ private fun StreamView(
             .build().apply {
                 repeatMode = Player.REPEAT_MODE_ALL
                 volume = 0f // video is permanently muted
+                // Prefer HD (>=720p) while keeping adaptive switching; falls back
+                // gracefully if the feed only offers lower resolutions.
+                trackSelectionParameters = trackSelectionParameters.buildUpon()
+                    .setMinVideoSize(1280, 720)
+                    .build()
                 playWhenReady = true
                 setMediaItem(MediaItem.fromUri(urls[0]))
                 prepare()
@@ -693,8 +735,6 @@ private fun StreamView(
             }
     }
 
-    // Current surah name shown in the now-playing bar.
-    var currentSurah by remember { mutableStateOf(QURAN_TRACKS.firstOrNull()?.name ?: "") }
 
     // Self-healing reconnect for both streams.
     DisposableEffect(livePlayer, quranPlayer) {
@@ -720,9 +760,6 @@ private fun StreamView(
                         quranPlayer.prepare(); quranPlayer.playWhenReady = true
                     } catch (_: Exception) {}
                 }, 3000)
-            }
-            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                currentSurah = QURAN_TRACKS.getOrNull(quranPlayer.currentMediaItemIndex)?.name ?: currentSurah
             }
         }
         livePlayer.addListener(liveListener)
@@ -784,47 +821,84 @@ private fun StreamView(
             Text("MAKKAH", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
         }
 
-        // Bottom bar: now-playing player, doubling as the prayer/adhan mute status.
-        Row(
+        // Bottom status bar — frosted glass, now-playing + prayer/adhan pause status.
+        val barTr = rememberInfiniteTransition(label = "barglass")
+        val barShimmer by barTr.animateFloat(
+            initialValue = 0f, targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(5600, easing = LinearEasing), repeatMode = RepeatMode.Restart),
+            label = "barShimmer"
+        )
+        Box(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                .background(Color.Black.copy(alpha = 0.62f))
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color.Black.copy(alpha = 0.40f), Color.Black.copy(alpha = 0.72f))
+                    )
+                )
         ) {
+            // Glass sheen + slow glisten + top highlight (behind the content, non-interactive).
+            Canvas(Modifier.matchParentSize()) {
+                val w = size.width; val h = size.height
+                drawRect(Color.White.copy(alpha = 0.16f), topLeft = Offset(0f, 0f), size = Size(w, 1.5.dp.toPx()))
+                drawRect(
+                    Brush.verticalGradient(
+                        0f to Color.White.copy(alpha = 0.08f),
+                        0.6f to Color.Transparent,
+                        1f to Color.Transparent
+                    )
+                )
+                val bandW = w * 0.16f
+                val x = -bandW + barShimmer * (w + 2f * bandW)
+                drawRect(
+                    brush = Brush.linearGradient(
+                        colors = listOf(Color.Transparent, Color.White.copy(alpha = 0.10f), Color.Transparent),
+                        start = Offset(x, 0f),
+                        end = Offset(x + bandW, h)
+                    ),
+                    topLeft = Offset(x - bandW, 0f),
+                    size = Size(bandW * 3f, h)
+                )
+            }
+
             Row(
-                modifier = Modifier.weight(1f),
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                when {
-                    isPrayerMute -> {
-                        SpeakerIcon(muted = true)
-                        Column {
-                            Text("Sound Muted", color = Amber, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                            Text("Prayer / Adhan time", color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp, maxLines = 1)
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    when {
+                        isPrayerMute -> {
+                            SpeakerIcon(muted = true)
+                            Column {
+                                Text("Sound Muted", color = Amber, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                Text("Prayer / Adhan time", color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp, maxLines = 1)
+                            }
                         }
-                    }
-                    isQuranMuted -> {
-                        SpeakerIcon(muted = true)
-                        Text("Quran audio muted", color = Color.White.copy(alpha = 0.8f), fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                    }
-                    else -> {
-                        EqualizerIcon()
-                        Column {
-                            Text("Now Playing · Holy Qur'an", color = Amber, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                            Text("Surah $currentSurah", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        isQuranMuted -> {
+                            SpeakerIcon(muted = true)
+                            Text("Quran audio muted", color = Color.White.copy(alpha = 0.8f), fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        }
+                        else -> {
+                            EqualizerIcon()
+                            Column {
+                                Text("Now Playing · Holy Qur'an", color = Amber, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                Text(QURAN_RECITER, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
                         }
                     }
                 }
+                // Mute toggle (controls the Quran audio).
+                Box(
+                    Modifier.size(40.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.08f))
+                        .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
+                        .clickable { onToggleMute() },
+                    contentAlignment = Alignment.Center
+                ) { SpeakerIcon(muted = isQuranMuted) }
             }
-            // Mute toggle (controls the Quran audio).
-            Box(
-                Modifier.size(40.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.08f))
-                    .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
-                    .clickable { onToggleMute() },
-                contentAlignment = Alignment.Center
-            ) { SpeakerIcon(muted = isQuranMuted) }
         }
     }
 }
