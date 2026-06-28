@@ -110,7 +110,7 @@ private val QURAN_TRACKS = listOf(
     Surah("085.mp3", "Al-Buruj"), Surah("086.mp3", "At-Tariq"), Surah("087.mp3", "Al-A'la"),
     Surah("089.mp3", "Al-Fajr"), Surah("090.mp3", "Al-Balad"), Surah("091.mp3", "Ash-Shams"),
     Surah("092.mp3", "Al-Layl"), Surah("093.mp3", "Ad-Duha"), Surah("097.mp3", "Al-Qadr"),
-    Surah("099.mp3", "Az-Zalzalah"), Surah("108.mp3", "Al-Kawthar")
+    Surah("099.mp3", "Az-Zalzalah"), Surah("100.mp3", "Al-Adiyat")
 )
 // At each prayer time, ALL audio is muted for this long (adhan + prayer), then Quran resumes.
 private const val PRAYER_MUTE_WINDOW_MS = 15L * 60L * 1000L
